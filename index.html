@@ -116,16 +116,10 @@
         
         .card-gold { border-color: #ffd700; }
         .card-gold .stat-value { color: #ffd700; }
-        
-        .card-companion { border-color: #03a9f4; }
-        .card-companion .stat-value { color: #81d4fa; }
-
         .card-elite { border-color: #9c27b0; }
         .card-elite .stat-value { color: #e1bee7; }
-        
         .card-arena { border-color: #ff5722; }
         .card-arena .stat-value { color: #ffab91; }
-        
         .card-hunters { border-color: #4caf50; }
         .card-hunters .stat-value { color: #a5d6a7; }
         
@@ -170,42 +164,43 @@
             <div class="stat-value" id="valGold">0</div>
             <div class="stat-title">Всего золота</div>
         </div>
-        <div class="stat-card card-companion">
-            <div class="stat-icon">🤝</div>
-            <div class="stat-value" id="valCompanionGold">0</div>
-            <div class="stat-title">От компаньона</div>
-        </div>
-
+        
         <div class="stat-card">
             <div class="stat-icon">💀</div>
             <div class="stat-value" id="valTrophies">0</div>
             <div class="stat-title">Трофеев</div>
         </div>
+        
         <div class="stat-card card-elite">
             <div class="stat-icon">☠️</div>
             <div class="stat-value" id="valElite">0</div>
-            <div class="stat-title">Элита (Данж)</div>
+            <div class="stat-title">Элита (Подземелье)</div>
         </div>
+
         <div class="stat-card card-arena">
             <div class="stat-icon">⚔️</div>
             <div class="stat-value" id="valArenaElites">0</div>
             <div class="stat-title">Элита (Арена)</div>
         </div>
+        
         <div class="stat-card">
             <div class="stat-icon">🛡️</div>
             <div class="stat-value" id="valRep">0</div>
-            <div class="stat-title">Реп. Ордена</div>
+            <div class="stat-title">Репутация Ордена</div>
         </div>
+
         <div class="stat-card card-hunters">
             <div class="stat-icon">🏹</div>
             <div class="stat-value" id="valHunterRep">0</div>
-            <div class="stat-title">Реп. Охотников</div>
+            <div class="stat-title">Репутация Охотников</div>
         </div>
+        
         <div class="stat-card">
             <div class="stat-icon">🏺</div>
             <div class="stat-value" id="valPots">0</div>
-            <div class="stat-title">Горшочков</div>
+            <div class="stat-title">Горшочков найдено</div>
         </div>
+        
         <div class="stat-card">
             <div class="stat-icon">🏆</div>
             <div class="stat-value" id="valBattles">0</div>
@@ -216,8 +211,7 @@
 
 <script>
     let stats = {
-        gold: 0, companionGold: 0, 
-        trophies: 0, eliteTrophies: 0, arenaElites: 0, 
+        gold: 0, trophies: 0, eliteTrophies: 0, arenaElites: 0, 
         reputation: 0, hunterRep: 0, pots: 0, battles: 0
     };
 
@@ -228,9 +222,10 @@
     let currentOffset = 0;
     
     let isParsing = false;
-    let isCancelled = false;
+    let isCancelled = false; // Флаг для остановки
     let messagesBuffer = [];
 
+    // Форматирование даты для подстановки в input
     function getLocalISOTime(date) {
         const tzOffset = date.getTimezoneOffset() * 60000;
         return (new Date(date - tzOffset)).toISOString().slice(0,16);
@@ -245,27 +240,24 @@
         }
 
         const now = new Date();
+        
+        // По умолчанию: Конец - текущее время
         document.getElementById('timeEndInput').value = getLocalISOTime(now);
         
+        // По умолчанию: Начало - сегодня 00:00
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         document.getElementById('timeStartInput').value = getLocalISOTime(startOfDay);
     };
 
     function resetStats() {
-        stats = { 
-            gold: 0, companionGold: 0, 
-            trophies: 0, eliteTrophies: 0, arenaElites: 0, 
-            reputation: 0, hunterRep: 0, pots: 0, battles: 0 
-        };
+        stats = { gold: 0, trophies: 0, eliteTrophies: 0, arenaElites: 0, reputation: 0, hunterRep: 0, pots: 0, battles: 0 };
         messagesBuffer = [];
         updateUI();
     }
 
     function updateUI() {
         document.getElementById('valGold').innerText = stats.gold;
-        document.getElementById('valCompanionGold').innerText = stats.companionGold;
-        
         document.getElementById('valTrophies').innerText = stats.trophies;
         document.getElementById('valElite').innerText = stats.eliteTrophies;
         document.getElementById('valArenaElites').innerText = stats.arenaElites;
@@ -289,4 +281,217 @@
         localStorage.setItem('vk_token', token);
         localStorage.setItem('vk_dialog_id', dialogId);
 
-        startTimestamp = Math.floor(new Date(timeStart).getTime() / 10
+        startTimestamp = Math.floor(new Date(timeStart).getTime() / 1000);
+        endTimestamp = Math.floor(new Date(timeEnd).getTime() / 1000);
+
+        if (startTimestamp > endTimestamp) {
+            alert('Дата НАЧАЛА не может быть позже даты КОНЦА!');
+            return;
+        }
+        
+        resetStats();
+        currentOffset = 0;
+        isParsing = true;
+        isCancelled = false;
+        
+        // Управление интерфейсом кнопок
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('downloadBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+        
+        document.getElementById('progressInfo').innerText = "Поиск сообщений в заданном диапазоне...";
+        document.getElementById('progressInfo').style.color = "#4CAF50";
+
+        fetchBatch();
+    }
+
+    // Экстренная остановка
+    function stopParsing() {
+        if (!isParsing) return;
+        isCancelled = true;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('progressInfo').innerText = "Остановка... Обрабатываем то, что успели скачать.";
+        document.getElementById('progressInfo').style.color = "#ff9800";
+    }
+
+    function fetchBatch() {
+        if (!isParsing) return;
+
+        // Если пользователь нажал "Остановить"
+        if (isCancelled) {
+            isParsing = false;
+            setTimeout(processChronologically, 100);
+            return;
+        }
+
+        const script = document.createElement('script');
+        const callbackName = 'vkParse_' + Math.round(Math.random() * 1000000);
+        
+        window[callbackName] = function(data) {
+            delete window[callbackName];
+            document.head.removeChild(script);
+
+            if (data.error) {
+                document.getElementById('progressInfo').innerText = "Ошибка ВК: " + data.error.error_msg;
+                document.getElementById('progressInfo').style.color = "#f44336";
+                finalizeParsingUI();
+                return;
+            }
+
+            if (data.response && data.response.items) {
+                const items = data.response.items;
+                let reachedOldLimit = false;
+
+                for (let msg of items) {
+                    // 1. Если сообщение старее, чем дата "С" -> мы закончили сбор
+                    if (msg.date < startTimestamp) {
+                        reachedOldLimit = true;
+                        break; 
+                    }
+                    
+                    // 2. Если сообщение новее, чем дата "ПО" -> пропускаем его, идем дальше
+                    if (msg.date > endTimestamp) {
+                        continue;
+                    }
+
+                    // 3. Сообщение попадает в наш диапазон, сохраняем в буфер
+                    if (msg.out === 0 && msg.text) {
+                        messagesBuffer.push(msg.text);
+                    }
+                }
+
+                if (reachedOldLimit || items.length === 0) {
+                    isParsing = false;
+                    document.getElementById('progressInfo').innerText = "Анализ данных...";
+                    setTimeout(processChronologically, 100);
+                } else {
+                    currentOffset += 200;
+                    document.getElementById('progressInfo').innerText = `Проверено ${currentOffset} сообщений... Найдено: ${messagesBuffer.length}`;
+                    setTimeout(fetchBatch, 350); 
+                }
+            }
+        };
+
+        script.onerror = function() {
+            delete window[callbackName];
+            document.head.removeChild(script);
+            document.getElementById('progressInfo').innerText = "Ошибка сети! Пробую снова...";
+            setTimeout(fetchBatch, 1000);
+        };
+
+        script.src = `https://api.vk.com/method/messages.getHistory?peer_id=${dialogId}&count=200&offset=${currentOffset}&v=5.131&access_token=${token}&callback=${callbackName}`;
+        document.head.appendChild(script);
+    }
+
+    function processChronologically() {
+        messagesBuffer.reverse();
+        let inArena = false;
+
+        for (let text of messagesBuffer) {
+            if (/Элитная арена/i.test(text) && /развлечений/i.test(text)) inArena = true;
+            if (/не смогли одолеть очередного противника/i.test(text) || /прогоняет Вас с арены/i.test(text)) inArena = false;
+
+            const goldMatch = text.match(/(?:за|на|заработали)\s+(\d+)\s+золота/i);
+            if (goldMatch) stats.gold += parseInt(goldMatch[1]);
+
+            const potMatch = text.match(/горшок с золотом\s*\((\d+)\)/i);
+            if (potMatch) {
+                stats.pots += 1;
+                stats.gold += parseInt(potMatch[1]);
+            }
+
+            const trophyMatch1 = text.match(/Вы получили\s+(\d+)\s+трофеев/i);
+            const trophyMatch2 = text.match(/Трофеи\s*\+\s*(\d+)/i);
+            const trophyHunterMatch = text.match(/Получено трофеев и репутации:\s*(\d+)/i);
+            
+            if (trophyMatch1) stats.trophies += parseInt(trophyMatch1[1]);
+            if (trophyMatch2) stats.trophies += parseInt(trophyMatch2[1]);
+            if (trophyHunterMatch) {
+                const val = parseInt(trophyHunterMatch[1]);
+                stats.trophies += val;
+                stats.hunterRep += val;
+            }
+
+            const hunterRepExchange = text.match(/обменяли.*на\s*(\d+)\s*репутации/i);
+            if (hunterRepExchange) stats.hunterRep += parseInt(hunterRepExchange[1]);
+
+            if (/Элитный трофей/i.test(text)) {
+                if (inArena) stats.arenaElites += 1;
+                else stats.eliteTrophies += 1;
+            }
+
+            const repMatch = text.match(/Заработано репутации Ордена:\s*(\d+)/i);
+            if (repMatch) {
+                stats.battles += 1;
+                stats.reputation += parseInt(repMatch[1]);
+            }
+        }
+
+        updateUI();
+        
+        if (isCancelled) {
+            document.getElementById('progressInfo').innerText = `Сбор ПРЕРВАН! Обработано ${messagesBuffer.length} сообщений.`;
+        } else {
+            document.getElementById('progressInfo').innerText = `Готово! Успешно обработано ${messagesBuffer.length} сообщений.`;
+        }
+        document.getElementById('progressInfo').style.color = "#ffd700";
+        
+        finalizeParsingUI();
+        messagesBuffer = [];
+    }
+
+    // Возвращает кнопки в исходное состояние и включает кнопку скачивания
+    function finalizeParsingUI() {
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('downloadBtn').disabled = false;
+    }
+
+    // Генерация и скачивание текстового отчета
+    function downloadStats() {
+        const timeStart = new Date(startTimestamp * 1000).toLocaleString('ru-RU');
+        const timeEnd = new Date(endTimestamp * 1000).toLocaleString('ru-RU');
+        
+        const reportContent = 
+`=== ОТЧЕТ: ТРЕКЕР ПОДЗЕМЕЛЬЯ ===
+Период сбора: ${timeStart} - ${timeEnd}
+Статус сбора: ${isCancelled ? "ПРЕРВАН ПОЛЬЗОВАТЕЛЕМ (Частичные данные)" : "ПОЛНЫЙ"}
+
+💰 ЭКОНОМИКА
+- Всего найдено/заработано золота: ${stats.gold}
+- Найдено горшочков с золотом: ${stats.pots}
+
+💀 ДОБЫЧА И ТРОФЕИ
+- Обычные трофеи: ${stats.trophies}
+- Элитные трофеи (Подземелье): ${stats.eliteTrophies}
+- Элитные трофеи (Арена): ${stats.arenaElites}
+
+🛡 РЕПУТАЦИЯ И БОИ
+- Проведено победных боев: ${stats.battles}
+- Получено репутации Ордена: ${stats.reputation}
+- Получено репутации Охотников: ${stats.hunterRep}
+
+Сгенерировано автоматически из истории ВК.
+`;
+        
+        // Создаем виртуальный файл (Blob)
+        const blob = new Blob([reportContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        
+        // Создаем скрытую ссылку и "кликаем" по ней
+        const a = document.createElement('a');
+        a.href = url;
+        // Называем файл с указанием текущей даты, чтобы они не перезаписывались в папке загрузок
+        const fileDate = new Date().toISOString().slice(0,10);
+        a.download = `dungeon_report_${fileDate}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        
+        // Убираем мусор
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+</script>
+
+</body>
+</html>
