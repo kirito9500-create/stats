@@ -48,21 +48,42 @@
         
         label { font-size: 12px; color: #a0aab2; text-transform: uppercase; font-weight: bold; }
         
+        .date-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
         button {
             width: 100%;
-            background-color: #e94560;
             color: white;
             border: none;
             padding: 14px;
-            margin-top: 15px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 16px;
             font-weight: bold;
             transition: 0.2s;
         }
-        button:hover { background-color: #d83a56; }
-        button:disabled { background-color: #555; cursor: not-allowed; }
+        
+        #startBtn { background-color: #e94560; grid-column: 1 / -1; }
+        #startBtn:hover { background-color: #d83a56; }
+        
+        #stopBtn { background-color: #f44336; }
+        #stopBtn:hover { background-color: #d32f2f; }
+        
+        #downloadBtn { background-color: #4CAF50; }
+        #downloadBtn:hover { background-color: #388E3C; }
+        
+        button:disabled { background-color: #555 !important; cursor: not-allowed; color: #888; }
         
         #progressInfo {
             text-align: center;
@@ -95,13 +116,10 @@
         
         .card-gold { border-color: #ffd700; }
         .card-gold .stat-value { color: #ffd700; }
-        
         .card-elite { border-color: #9c27b0; }
         .card-elite .stat-value { color: #e1bee7; }
-
         .card-arena { border-color: #ff5722; }
         .card-arena .stat-value { color: #ffab91; }
-
         .card-hunters { border-color: #4caf50; }
         .card-hunters .stat-value { color: #a5d6a7; }
         
@@ -119,10 +137,23 @@
         <label>ID диалога с ботом</label>
         <input type="text" id="dialogIdInput" placeholder="-208825850">
         
-        <label style="margin-top: 10px; display: block;">Собирать статистику начиная с:</label>
-        <input type="datetime-local" id="timeLimitInput">
+        <div class="date-grid">
+            <div>
+                <label>С (Начало периода):</label>
+                <input type="datetime-local" id="timeStartInput">
+            </div>
+            <div>
+                <label>По (Конец периода):</label>
+                <input type="datetime-local" id="timeEndInput">
+            </div>
+        </div>
         
         <button id="startBtn" onclick="startParsing()">Собрать статистику</button>
+        
+        <div class="buttons-grid">
+            <button id="stopBtn" onclick="stopParsing()" disabled>⏹ Остановить</button>
+            <button id="downloadBtn" onclick="downloadStats()" disabled>⬇️ Скачать отчет</button>
+        </div>
     </div>
 
     <div id="progressInfo">Ожидание запуска...</div>
@@ -180,22 +211,25 @@
 
 <script>
     let stats = {
-        gold: 0,
-        trophies: 0,
-        eliteTrophies: 0,
-        arenaElites: 0,
-        reputation: 0,
-        hunterRep: 0,
-        pots: 0,
-        battles: 0
+        gold: 0, trophies: 0, eliteTrophies: 0, arenaElites: 0, 
+        reputation: 0, hunterRep: 0, pots: 0, battles: 0
     };
 
     let token = '';
     let dialogId = '';
-    let limitTimestamp = 0; 
+    let startTimestamp = 0; 
+    let endTimestamp = 0; 
     let currentOffset = 0;
+    
     let isParsing = false;
+    let isCancelled = false; // Флаг для остановки
     let messagesBuffer = [];
+
+    // Форматирование даты для подстановки в input
+    function getLocalISOTime(date) {
+        const tzOffset = date.getTimezoneOffset() * 60000;
+        return (new Date(date - tzOffset)).toISOString().slice(0,16);
+    }
 
     window.onload = () => {
         const savedToken = localStorage.getItem('vk_token');
@@ -206,10 +240,14 @@
         }
 
         const now = new Date();
-        now.setHours(0, 0, 0, 0);
-        const tzOffset = now.getTimezoneOffset() * 60000;
-        const localISOTime = (new Date(now - tzOffset)).toISOString().slice(0,16);
-        document.getElementById('timeLimitInput').value = localISOTime;
+        
+        // По умолчанию: Конец - текущее время
+        document.getElementById('timeEndInput').value = getLocalISOTime(now);
+        
+        // По умолчанию: Начало - сегодня 00:00
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        document.getElementById('timeStartInput').value = getLocalISOTime(startOfDay);
     };
 
     function resetStats() {
@@ -232,31 +270,59 @@
     function startParsing() {
         token = document.getElementById('tokenInput').value.trim();
         dialogId = document.getElementById('dialogIdInput').value.trim();
-        const timeInput = document.getElementById('timeLimitInput').value;
+        const timeStart = document.getElementById('timeStartInput').value;
+        const timeEnd = document.getElementById('timeEndInput').value;
 
-        if (!token || !dialogId || !timeInput) {
-            alert('Заполните все поля, включая время!');
+        if (!token || !dialogId || !timeStart || !timeEnd) {
+            alert('Заполните все поля, включая обе даты!');
             return;
         }
 
         localStorage.setItem('vk_token', token);
         localStorage.setItem('vk_dialog_id', dialogId);
 
-        limitTimestamp = Math.floor(new Date(timeInput).getTime() / 1000);
+        startTimestamp = Math.floor(new Date(timeStart).getTime() / 1000);
+        endTimestamp = Math.floor(new Date(timeEnd).getTime() / 1000);
+
+        if (startTimestamp > endTimestamp) {
+            alert('Дата НАЧАЛА не может быть позже даты КОНЦА!');
+            return;
+        }
         
         resetStats();
         currentOffset = 0;
         isParsing = true;
+        isCancelled = false;
         
+        // Управление интерфейсом кнопок
         document.getElementById('startBtn').disabled = true;
-        document.getElementById('progressInfo').innerText = "Сбор истории сообщений...";
+        document.getElementById('downloadBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+        
+        document.getElementById('progressInfo').innerText = "Поиск сообщений в заданном диапазоне...";
         document.getElementById('progressInfo').style.color = "#4CAF50";
 
         fetchBatch();
     }
 
+    // Экстренная остановка
+    function stopParsing() {
+        if (!isParsing) return;
+        isCancelled = true;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('progressInfo').innerText = "Остановка... Обрабатываем то, что успели скачать.";
+        document.getElementById('progressInfo').style.color = "#ff9800";
+    }
+
     function fetchBatch() {
         if (!isParsing) return;
+
+        // Если пользователь нажал "Остановить"
+        if (isCancelled) {
+            isParsing = false;
+            setTimeout(processChronologically, 100);
+            return;
+        }
 
         const script = document.createElement('script');
         const callbackName = 'vkParse_' + Math.round(Math.random() * 1000000);
@@ -268,31 +334,39 @@
             if (data.error) {
                 document.getElementById('progressInfo').innerText = "Ошибка ВК: " + data.error.error_msg;
                 document.getElementById('progressInfo').style.color = "#f44336";
-                document.getElementById('startBtn').disabled = false;
+                finalizeParsingUI();
                 return;
             }
 
             if (data.response && data.response.items) {
                 const items = data.response.items;
-                let reachedLimit = false;
+                let reachedOldLimit = false;
 
                 for (let msg of items) {
-                    if (msg.date < limitTimestamp) {
-                        reachedLimit = true;
+                    // 1. Если сообщение старее, чем дата "С" -> мы закончили сбор
+                    if (msg.date < startTimestamp) {
+                        reachedOldLimit = true;
                         break; 
                     }
+                    
+                    // 2. Если сообщение новее, чем дата "ПО" -> пропускаем его, идем дальше
+                    if (msg.date > endTimestamp) {
+                        continue;
+                    }
+
+                    // 3. Сообщение попадает в наш диапазон, сохраняем в буфер
                     if (msg.out === 0 && msg.text) {
                         messagesBuffer.push(msg.text);
                     }
                 }
 
-                if (reachedLimit || items.length === 0) {
+                if (reachedOldLimit || items.length === 0) {
                     isParsing = false;
                     document.getElementById('progressInfo').innerText = "Анализ данных...";
                     setTimeout(processChronologically, 100);
                 } else {
                     currentOffset += 200;
-                    document.getElementById('progressInfo').innerText = `Скачано ${currentOffset} сообщений...`;
+                    document.getElementById('progressInfo').innerText = `Проверено ${currentOffset} сообщений... Найдено: ${messagesBuffer.length}`;
                     setTimeout(fetchBatch, 350); 
                 }
             }
@@ -311,59 +385,41 @@
 
     function processChronologically() {
         messagesBuffer.reverse();
-        
         let inArena = false;
 
         for (let text of messagesBuffer) {
-            
-            // 1. Проверяем смену состояний (Арена)
-            if (/Элитная арена/i.test(text) && /развлечений/i.test(text)) {
-                inArena = true;
-            }
-            if (/не смогли одолеть очередного противника/i.test(text) || /прогоняет Вас с арены/i.test(text)) {
-                inArena = false;
-            }
+            if (/Элитная арена/i.test(text) && /развлечений/i.test(text)) inArena = true;
+            if (/не смогли одолеть очередного противника/i.test(text) || /прогоняет Вас с арены/i.test(text)) inArena = false;
 
-            // 2. Поиск Золота
             const goldMatch = text.match(/(?:за|на|заработали)\s+(\d+)\s+золота/i);
             if (goldMatch) stats.gold += parseInt(goldMatch[1]);
 
-            // 3. Горшочки
             const potMatch = text.match(/горшок с золотом\s*\((\d+)\)/i);
             if (potMatch) {
                 stats.pots += 1;
                 stats.gold += parseInt(potMatch[1]);
             }
 
-            // 4. Обычные трофеи и Репутация охотников (сомещенное сообщение)
             const trophyMatch1 = text.match(/Вы получили\s+(\d+)\s+трофеев/i);
             const trophyMatch2 = text.match(/Трофеи\s*\+\s*(\d+)/i);
-            const trophyHunterMatch = text.match(/Получено трофеев и репутации:\s*(\d+)/i); // Ловит новую фразу
+            const trophyHunterMatch = text.match(/Получено трофеев и репутации:\s*(\d+)/i);
             
             if (trophyMatch1) stats.trophies += parseInt(trophyMatch1[1]);
             if (trophyMatch2) stats.trophies += parseInt(trophyMatch2[1]);
             if (trophyHunterMatch) {
                 const val = parseInt(trophyHunterMatch[1]);
-                stats.trophies += val;    // Плюсуем в обычные трофеи
-                stats.hunterRep += val;   // Плюсуем в репутацию охотников
+                stats.trophies += val;
+                stats.hunterRep += val;
             }
 
-            // 5. Обмен на Репутацию охотников
             const hunterRepExchange = text.match(/обменяли.*на\s*(\d+)\s*репутации/i);
-            if (hunterRepExchange) {
-                stats.hunterRep += parseInt(hunterRepExchange[1]);
-            }
+            if (hunterRepExchange) stats.hunterRep += parseInt(hunterRepExchange[1]);
 
-            // 6. Элитные трофеи (С учетом текущего состояния)
             if (/Элитный трофей/i.test(text)) {
-                if (inArena) {
-                    stats.arenaElites += 1;
-                } else {
-                    stats.eliteTrophies += 1;
-                }
+                if (inArena) stats.arenaElites += 1;
+                else stats.eliteTrophies += 1;
             }
 
-            // 7. Репутация Ордена и бои
             const repMatch = text.match(/Заработано репутации Ордена:\s*(\d+)/i);
             if (repMatch) {
                 stats.battles += 1;
@@ -372,11 +428,68 @@
         }
 
         updateUI();
-        document.getElementById('progressInfo').innerText = `Готово! Проанализировано ${messagesBuffer.length} сообщений.`;
-        document.getElementById('progressInfo').style.color = "#ffd700";
-        document.getElementById('startBtn').disabled = false;
         
+        if (isCancelled) {
+            document.getElementById('progressInfo').innerText = `Сбор ПРЕРВАН! Обработано ${messagesBuffer.length} сообщений.`;
+        } else {
+            document.getElementById('progressInfo').innerText = `Готово! Успешно обработано ${messagesBuffer.length} сообщений.`;
+        }
+        document.getElementById('progressInfo').style.color = "#ffd700";
+        
+        finalizeParsingUI();
         messagesBuffer = [];
+    }
+
+    // Возвращает кнопки в исходное состояние и включает кнопку скачивания
+    function finalizeParsingUI() {
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('downloadBtn').disabled = false;
+    }
+
+    // Генерация и скачивание текстового отчета
+    function downloadStats() {
+        const timeStart = new Date(startTimestamp * 1000).toLocaleString('ru-RU');
+        const timeEnd = new Date(endTimestamp * 1000).toLocaleString('ru-RU');
+        
+        const reportContent = 
+`=== ОТЧЕТ: ТРЕКЕР ПОДЗЕМЕЛЬЯ ===
+Период сбора: ${timeStart} - ${timeEnd}
+Статус сбора: ${isCancelled ? "ПРЕРВАН ПОЛЬЗОВАТЕЛЕМ (Частичные данные)" : "ПОЛНЫЙ"}
+
+💰 ЭКОНОМИКА
+- Всего найдено/заработано золота: ${stats.gold}
+- Найдено горшочков с золотом: ${stats.pots}
+
+💀 ДОБЫЧА И ТРОФЕИ
+- Обычные трофеи: ${stats.trophies}
+- Элитные трофеи (Подземелье): ${stats.eliteTrophies}
+- Элитные трофеи (Арена): ${stats.arenaElites}
+
+🛡 РЕПУТАЦИЯ И БОИ
+- Проведено победных боев: ${stats.battles}
+- Получено репутации Ордена: ${stats.reputation}
+- Получено репутации Охотников: ${stats.hunterRep}
+
+Сгенерировано автоматически из истории ВК.
+`;
+        
+        // Создаем виртуальный файл (Blob)
+        const blob = new Blob([reportContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        
+        // Создаем скрытую ссылку и "кликаем" по ней
+        const a = document.createElement('a');
+        a.href = url;
+        // Называем файл с указанием текущей даты, чтобы они не перезаписывались в папке загрузок
+        const fileDate = new Date().toISOString().slice(0,10);
+        a.download = `dungeon_report_${fileDate}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        
+        // Убираем мусор
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 </script>
 
