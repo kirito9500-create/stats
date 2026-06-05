@@ -116,12 +116,27 @@
         
         .card-gold { border-color: #ffd700; }
         .card-gold .stat-value { color: #ffd700; }
+        
+        .card-companion { border-color: #03a9f4; }
+        .card-companion .stat-value { color: #81d4fa; }
+
         .card-elite { border-color: #9c27b0; }
         .card-elite .stat-value { color: #e1bee7; }
+        
         .card-arena { border-color: #ff5722; }
         .card-arena .stat-value { color: #ffab91; }
+        
         .card-hunters { border-color: #4caf50; }
         .card-hunters .stat-value { color: #a5d6a7; }
+
+        .card-stamina { border-color: #e91e63; }
+        .card-stamina .stat-value { color: #f48fb1; }
+
+        .card-agility { border-color: #00bcd4; }
+        .card-agility .stat-value { color: #80deea; }
+
+        .card-strength { border-color: #ff9800; }
+        .card-strength .stat-value { color: #ffcc80; }
         
     </style>
 </head>
@@ -164,43 +179,58 @@
             <div class="stat-value" id="valGold">0</div>
             <div class="stat-title">Всего золота</div>
         </div>
-        
+        <div class="stat-card card-companion">
+            <div class="stat-icon">🤝</div>
+            <div class="stat-value" id="valCompanionGold">0</div>
+            <div class="stat-title">От компаньона</div>
+        </div>
+
+        <div class="stat-card card-stamina">
+            <div class="stat-icon">❤️</div>
+            <div class="stat-value" id="valStamina">0</div>
+            <div class="stat-title">Выносливость</div>
+        </div>
+        <div class="stat-card card-agility">
+            <div class="stat-icon">🖐</div>
+            <div class="stat-value" id="valAgility">0</div>
+            <div class="stat-title">Ловкость</div>
+        </div>
+        <div class="stat-card card-strength">
+            <div class="stat-icon">👊</div>
+            <div class="stat-value" id="valStrength">0</div>
+            <div class="stat-title">Сила</div>
+        </div>
+
         <div class="stat-card">
             <div class="stat-icon">💀</div>
             <div class="stat-value" id="valTrophies">0</div>
             <div class="stat-title">Трофеев</div>
         </div>
-        
         <div class="stat-card card-elite">
             <div class="stat-icon">☠️</div>
             <div class="stat-value" id="valElite">0</div>
-            <div class="stat-title">Элита (Подземелье)</div>
+            <div class="stat-title">Элита (Данж)</div>
         </div>
-
         <div class="stat-card card-arena">
             <div class="stat-icon">⚔️</div>
             <div class="stat-value" id="valArenaElites">0</div>
             <div class="stat-title">Элита (Арена)</div>
         </div>
-        
         <div class="stat-card">
             <div class="stat-icon">🛡️</div>
             <div class="stat-value" id="valRep">0</div>
-            <div class="stat-title">Репутация Ордена</div>
+            <div class="stat-title">Реп. Ордена</div>
         </div>
-
         <div class="stat-card card-hunters">
             <div class="stat-icon">🏹</div>
             <div class="stat-value" id="valHunterRep">0</div>
-            <div class="stat-title">Репутация Охотников</div>
+            <div class="stat-title">Реп. Охотников</div>
         </div>
-        
         <div class="stat-card">
             <div class="stat-icon">🏺</div>
             <div class="stat-value" id="valPots">0</div>
-            <div class="stat-title">Горшочков найдено</div>
+            <div class="stat-title">Горшочков</div>
         </div>
-        
         <div class="stat-card">
             <div class="stat-icon">🏆</div>
             <div class="stat-value" id="valBattles">0</div>
@@ -211,7 +241,9 @@
 
 <script>
     let stats = {
-        gold: 0, trophies: 0, eliteTrophies: 0, arenaElites: 0, 
+        gold: 0, companionGold: 0, 
+        stamina: 0, agility: 0, strength: 0,
+        trophies: 0, eliteTrophies: 0, arenaElites: 0, 
         reputation: 0, hunterRep: 0, pots: 0, battles: 0
     };
 
@@ -222,10 +254,9 @@
     let currentOffset = 0;
     
     let isParsing = false;
-    let isCancelled = false; // Флаг для остановки
+    let isCancelled = false;
     let messagesBuffer = [];
 
-    // Форматирование даты для подстановки в input
     function getLocalISOTime(date) {
         const tzOffset = date.getTimezoneOffset() * 60000;
         return (new Date(date - tzOffset)).toISOString().slice(0,16);
@@ -240,24 +271,32 @@
         }
 
         const now = new Date();
-        
-        // По умолчанию: Конец - текущее время
         document.getElementById('timeEndInput').value = getLocalISOTime(now);
         
-        // По умолчанию: Начало - сегодня 00:00
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         document.getElementById('timeStartInput').value = getLocalISOTime(startOfDay);
     };
 
     function resetStats() {
-        stats = { gold: 0, trophies: 0, eliteTrophies: 0, arenaElites: 0, reputation: 0, hunterRep: 0, pots: 0, battles: 0 };
+        stats = { 
+            gold: 0, companionGold: 0, 
+            stamina: 0, agility: 0, strength: 0,
+            trophies: 0, eliteTrophies: 0, arenaElites: 0, 
+            reputation: 0, hunterRep: 0, pots: 0, battles: 0 
+        };
         messagesBuffer = [];
         updateUI();
     }
 
     function updateUI() {
         document.getElementById('valGold').innerText = stats.gold;
+        document.getElementById('valCompanionGold').innerText = stats.companionGold;
+        
+        document.getElementById('valStamina').innerText = stats.stamina;
+        document.getElementById('valAgility').innerText = stats.agility;
+        document.getElementById('valStrength').innerText = stats.strength;
+
         document.getElementById('valTrophies').innerText = stats.trophies;
         document.getElementById('valElite').innerText = stats.eliteTrophies;
         document.getElementById('valArenaElites').innerText = stats.arenaElites;
@@ -294,7 +333,6 @@
         isParsing = true;
         isCancelled = false;
         
-        // Управление интерфейсом кнопок
         document.getElementById('startBtn').disabled = true;
         document.getElementById('downloadBtn').disabled = true;
         document.getElementById('stopBtn').disabled = false;
@@ -305,7 +343,6 @@
         fetchBatch();
     }
 
-    // Экстренная остановка
     function stopParsing() {
         if (!isParsing) return;
         isCancelled = true;
@@ -317,7 +354,6 @@
     function fetchBatch() {
         if (!isParsing) return;
 
-        // Если пользователь нажал "Остановить"
         if (isCancelled) {
             isParsing = false;
             setTimeout(processChronologically, 100);
@@ -343,18 +379,12 @@
                 let reachedOldLimit = false;
 
                 for (let msg of items) {
-                    // 1. Если сообщение старее, чем дата "С" -> мы закончили сбор
                     if (msg.date < startTimestamp) {
                         reachedOldLimit = true;
                         break; 
                     }
-                    
-                    // 2. Если сообщение новее, чем дата "ПО" -> пропускаем его, идем дальше
-                    if (msg.date > endTimestamp) {
-                        continue;
-                    }
+                    if (msg.date > endTimestamp) continue;
 
-                    // 3. Сообщение попадает в наш диапазон, сохраняем в буфер
                     if (msg.out === 0 && msg.text) {
                         messagesBuffer.push(msg.text);
                     }
@@ -391,15 +421,32 @@
             if (/Элитная арена/i.test(text) && /развлечений/i.test(text)) inArena = true;
             if (/не смогли одолеть очередного противника/i.test(text) || /прогоняет Вас с арены/i.test(text)) inArena = false;
 
+            // 1. Обычное золото (включает фразы "за", "на", "заработали")
             const goldMatch = text.match(/(?:за|на|заработали)\s+(\d+)\s+золота/i);
             if (goldMatch) stats.gold += parseInt(goldMatch[1]);
 
+            // 2. Отдельный счетчик для компаньона (эти деньги тоже попадают в goldMatch из-за слова "за")
+            const compGoldMatch = text.match(/продан компаньону за\s+(\d+)\s+золота/i);
+            if (compGoldMatch) stats.companionGold += parseInt(compGoldMatch[1]);
+
+            // 3. Горшочки с золотом
             const potMatch = text.match(/горшок с золотом\s*\((\d+)\)/i);
             if (potMatch) {
                 stats.pots += 1;
                 stats.gold += parseInt(potMatch[1]);
             }
 
+            // 4. Характеристики (Статы)
+            const staminaMatch = text.match(/(?:выносливость увеличилась на|Выносливость\s*\+)\s*(\d+)/i);
+            if (staminaMatch) stats.stamina += parseInt(staminaMatch[1]);
+
+            const agilityMatch = text.match(/(?:ловкость увеличилась на|Ловкость\s*\+)\s*(\d+)/i);
+            if (agilityMatch) stats.agility += parseInt(agilityMatch[1]);
+
+            const strengthMatch = text.match(/(?:сила увеличилась на|Сила\s*\+)\s*(\d+)/i);
+            if (strengthMatch) stats.strength += parseInt(strengthMatch[1]);
+
+            // 5. Трофеи и Репутация
             const trophyMatch1 = text.match(/Вы получили\s+(\d+)\s+трофеев/i);
             const trophyMatch2 = text.match(/Трофеи\s*\+\s*(\d+)/i);
             const trophyHunterMatch = text.match(/Получено трофеев и репутации:\s*(\d+)/i);
@@ -440,14 +487,12 @@
         messagesBuffer = [];
     }
 
-    // Возвращает кнопки в исходное состояние и включает кнопку скачивания
     function finalizeParsingUI() {
         document.getElementById('startBtn').disabled = false;
         document.getElementById('stopBtn').disabled = true;
         document.getElementById('downloadBtn').disabled = false;
     }
 
-    // Генерация и скачивание текстового отчета
     function downloadStats() {
         const timeStart = new Date(startTimestamp * 1000).toLocaleString('ru-RU');
         const timeEnd = new Date(endTimestamp * 1000).toLocaleString('ru-RU');
@@ -457,8 +502,14 @@
 Период сбора: ${timeStart} - ${timeEnd}
 Статус сбора: ${isCancelled ? "ПРЕРВАН ПОЛЬЗОВАТЕЛЕМ (Частичные данные)" : "ПОЛНЫЙ"}
 
+💪 ХАРАКТЕРИСТИКИ (ПРОКАЧКА)
+- Получено Выносливости: ${stats.stamina}
+- Получено Ловкости: ${stats.agility}
+- Получено Силы: ${stats.strength}
+
 💰 ЭКОНОМИКА
-- Всего найдено/заработано золота: ${stats.gold}
+- Всего золота заработано: ${stats.gold}
+- Из них выручено от Компаньона: ${stats.companionGold}
 - Найдено горшочков с золотом: ${stats.pots}
 
 💀 ДОБЫЧА И ТРОФЕИ
@@ -474,20 +525,16 @@
 Сгенерировано автоматически из истории ВК.
 `;
         
-        // Создаем виртуальный файл (Blob)
         const blob = new Blob([reportContent], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         
-        // Создаем скрытую ссылку и "кликаем" по ней
         const a = document.createElement('a');
         a.href = url;
-        // Называем файл с указанием текущей даты, чтобы они не перезаписывались в папке загрузок
         const fileDate = new Date().toISOString().slice(0,10);
         a.download = `dungeon_report_${fileDate}.txt`;
         document.body.appendChild(a);
         a.click();
         
-        // Убираем мусор
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }
