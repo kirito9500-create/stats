@@ -101,6 +101,9 @@
 
         .card-arena { border-color: #ff5722; }
         .card-arena .stat-value { color: #ffab91; }
+
+        .card-hunters { border-color: #4caf50; }
+        .card-hunters .stat-value { color: #a5d6a7; }
         
     </style>
 </head>
@@ -154,6 +157,12 @@
             <div class="stat-value" id="valRep">0</div>
             <div class="stat-title">Репутация Ордена</div>
         </div>
+
+        <div class="stat-card card-hunters">
+            <div class="stat-icon">🏹</div>
+            <div class="stat-value" id="valHunterRep">0</div>
+            <div class="stat-title">Репутация Охотников</div>
+        </div>
         
         <div class="stat-card">
             <div class="stat-icon">🏺</div>
@@ -176,6 +185,7 @@
         eliteTrophies: 0,
         arenaElites: 0,
         reputation: 0,
+        hunterRep: 0,
         pots: 0,
         battles: 0
     };
@@ -185,7 +195,7 @@
     let limitTimestamp = 0; 
     let currentOffset = 0;
     let isParsing = false;
-    let messagesBuffer = []; // Хранилище для всех сообщений
+    let messagesBuffer = [];
 
     window.onload = () => {
         const savedToken = localStorage.getItem('vk_token');
@@ -203,7 +213,7 @@
     };
 
     function resetStats() {
-        stats = { gold: 0, trophies: 0, eliteTrophies: 0, arenaElites: 0, reputation: 0, pots: 0, battles: 0 };
+        stats = { gold: 0, trophies: 0, eliteTrophies: 0, arenaElites: 0, reputation: 0, hunterRep: 0, pots: 0, battles: 0 };
         messagesBuffer = [];
         updateUI();
     }
@@ -214,6 +224,7 @@
         document.getElementById('valElite').innerText = stats.eliteTrophies;
         document.getElementById('valArenaElites').innerText = stats.arenaElites;
         document.getElementById('valRep').innerText = stats.reputation;
+        document.getElementById('valHunterRep').innerText = stats.hunterRep;
         document.getElementById('valPots').innerText = stats.pots;
         document.getElementById('valBattles').innerText = stats.battles;
     }
@@ -270,7 +281,6 @@
                         reachedLimit = true;
                         break; 
                     }
-                    // Собираем в буфер только сообщения от бота
                     if (msg.out === 0 && msg.text) {
                         messagesBuffer.push(msg.text);
                     }
@@ -279,12 +289,11 @@
                 if (reachedLimit || items.length === 0) {
                     isParsing = false;
                     document.getElementById('progressInfo').innerText = "Анализ данных...";
-                    // Запускаем хронологический анализ
                     setTimeout(processChronologically, 100);
                 } else {
                     currentOffset += 200;
                     document.getElementById('progressInfo').innerText = `Скачано ${currentOffset} сообщений...`;
-                    setTimeout(fetchBatch, 350); // Микро-пауза для ВК
+                    setTimeout(fetchBatch, 350); 
                 }
             }
         };
@@ -300,9 +309,7 @@
         document.head.appendChild(script);
     }
 
-    // === НОВЫЙ ХРОНОЛОГИЧЕСКИЙ ПАРСЕР СО СТАТУСАМИ ===
     function processChronologically() {
-        // Переворачиваем массив, чтобы читать от старых сообщений к новым
         messagesBuffer.reverse();
         
         let inArena = false;
@@ -328,13 +335,26 @@
                 stats.gold += parseInt(potMatch[1]);
             }
 
-            // 4. Обычные трофеи
+            // 4. Обычные трофеи и Репутация охотников (сомещенное сообщение)
             const trophyMatch1 = text.match(/Вы получили\s+(\d+)\s+трофеев/i);
             const trophyMatch2 = text.match(/Трофеи\s*\+\s*(\d+)/i);
+            const trophyHunterMatch = text.match(/Получено трофеев и репутации:\s*(\d+)/i); // Ловит новую фразу
+            
             if (trophyMatch1) stats.trophies += parseInt(trophyMatch1[1]);
             if (trophyMatch2) stats.trophies += parseInt(trophyMatch2[1]);
+            if (trophyHunterMatch) {
+                const val = parseInt(trophyHunterMatch[1]);
+                stats.trophies += val;    // Плюсуем в обычные трофеи
+                stats.hunterRep += val;   // Плюсуем в репутацию охотников
+            }
 
-            // 5. Элитные трофеи (С учетом текущего состояния!)
+            // 5. Обмен на Репутацию охотников
+            const hunterRepExchange = text.match(/обменяли.*на\s*(\d+)\s*репутации/i);
+            if (hunterRepExchange) {
+                stats.hunterRep += parseInt(hunterRepExchange[1]);
+            }
+
+            // 6. Элитные трофеи (С учетом текущего состояния)
             if (/Элитный трофей/i.test(text)) {
                 if (inArena) {
                     stats.arenaElites += 1;
@@ -343,7 +363,7 @@
                 }
             }
 
-            // 6. Репутация и бои
+            // 7. Репутация Ордена и бои
             const repMatch = text.match(/Заработано репутации Ордена:\s*(\d+)/i);
             if (repMatch) {
                 stats.battles += 1;
@@ -351,13 +371,11 @@
             }
         }
 
-        // Выводим результаты
         updateUI();
         document.getElementById('progressInfo').innerText = `Готово! Проанализировано ${messagesBuffer.length} сообщений.`;
         document.getElementById('progressInfo').style.color = "#ffd700";
         document.getElementById('startBtn').disabled = false;
         
-        // Очищаем буфер
         messagesBuffer = [];
     }
 </script>
