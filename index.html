@@ -73,7 +73,6 @@
             min-height: 20px;
         }
 
-        /* Сетка виджетов статистики */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -94,12 +93,14 @@
         .stat-value { font-size: 24px; font-weight: bold; color: #fff; margin: 5px 0; }
         .stat-title { font-size: 12px; color: #a0aab2; text-transform: uppercase; }
         
-        /* Особое выделение для золота */
         .card-gold { border-color: #ffd700; }
         .card-gold .stat-value { color: #ffd700; }
         
         .card-elite { border-color: #9c27b0; }
         .card-elite .stat-value { color: #e1bee7; }
+
+        .card-arena { border-color: #ff5722; }
+        .card-arena .stat-value { color: #ffab91; }
         
     </style>
 </head>
@@ -139,11 +140,17 @@
         <div class="stat-card card-elite">
             <div class="stat-icon">☠️</div>
             <div class="stat-value" id="valElite">0</div>
-            <div class="stat-title">Элитных трофеев</div>
+            <div class="stat-title">Элита (Подземелье)</div>
+        </div>
+
+        <div class="stat-card card-arena">
+            <div class="stat-icon">⚔️</div>
+            <div class="stat-value" id="valArenaElites">0</div>
+            <div class="stat-title">Элита (Арена)</div>
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">⚔️</div>
+            <div class="stat-icon">🛡️</div>
             <div class="stat-value" id="valRep">0</div>
             <div class="stat-title">Репутация Ордена</div>
         </div>
@@ -155,7 +162,7 @@
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">🛡️</div>
+            <div class="stat-icon">🏆</div>
             <div class="stat-value" id="valBattles">0</div>
             <div class="stat-title">Побед (Боев)</div>
         </div>
@@ -163,11 +170,11 @@
 </div>
 
 <script>
-    // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И СТАТИСТИКА ===
     let stats = {
         gold: 0,
         trophies: 0,
         eliteTrophies: 0,
+        arenaElites: 0,
         reputation: 0,
         pots: 0,
         battles: 0
@@ -178,9 +185,9 @@
     let limitTimestamp = 0; 
     let currentOffset = 0;
     let isParsing = false;
+    let messagesBuffer = []; // Хранилище для всех сообщений
 
     window.onload = () => {
-        // Подтягиваем сохраненные данные
         const savedToken = localStorage.getItem('vk_token');
         const savedDialog = localStorage.getItem('vk_dialog_id');
         if (savedToken && savedDialog) {
@@ -188,17 +195,16 @@
             document.getElementById('dialogIdInput').value = savedDialog;
         }
 
-        // По умолчанию ставим время на начало сегодняшнего дня (00:00)
         const now = new Date();
         now.setHours(0, 0, 0, 0);
-        // Форматируем для поля datetime-local (YYYY-MM-DDThh:mm)
         const tzOffset = now.getTimezoneOffset() * 60000;
         const localISOTime = (new Date(now - tzOffset)).toISOString().slice(0,16);
         document.getElementById('timeLimitInput').value = localISOTime;
     };
 
     function resetStats() {
-        stats = { gold: 0, trophies: 0, eliteTrophies: 0, reputation: 0, pots: 0, battles: 0 };
+        stats = { gold: 0, trophies: 0, eliteTrophies: 0, arenaElites: 0, reputation: 0, pots: 0, battles: 0 };
+        messagesBuffer = [];
         updateUI();
     }
 
@@ -206,6 +212,7 @@
         document.getElementById('valGold').innerText = stats.gold;
         document.getElementById('valTrophies').innerText = stats.trophies;
         document.getElementById('valElite').innerText = stats.eliteTrophies;
+        document.getElementById('valArenaElites').innerText = stats.arenaElites;
         document.getElementById('valRep').innerText = stats.reputation;
         document.getElementById('valPots').innerText = stats.pots;
         document.getElementById('valBattles').innerText = stats.battles;
@@ -221,30 +228,26 @@
             return;
         }
 
-        // Сохраняем токены
         localStorage.setItem('vk_token', token);
         localStorage.setItem('vk_dialog_id', dialogId);
 
-        // Переводим выбранное время в Unix Timestamp (в секундах)
         limitTimestamp = Math.floor(new Date(timeInput).getTime() / 1000);
         
-        // Сброс перед началом
         resetStats();
         currentOffset = 0;
         isParsing = true;
         
         document.getElementById('startBtn').disabled = true;
-        document.getElementById('progressInfo').innerText = "Подключение и сбор данных...";
+        document.getElementById('progressInfo').innerText = "Сбор истории сообщений...";
+        document.getElementById('progressInfo').style.color = "#4CAF50";
 
         fetchBatch();
     }
 
-    // === ФУНКЦИЯ ЗАГРУЗКИ ПАЧКИ (200 сообщений) ===
     function fetchBatch() {
         if (!isParsing) return;
 
         const script = document.createElement('script');
-        // Уникальное имя коллбека для каждого запроса
         const callbackName = 'vkParse_' + Math.round(Math.random() * 1000000);
         
         window[callbackName] = function(data) {
@@ -253,6 +256,7 @@
 
             if (data.error) {
                 document.getElementById('progressInfo').innerText = "Ошибка ВК: " + data.error.error_msg;
+                document.getElementById('progressInfo').style.color = "#f44336";
                 document.getElementById('startBtn').disabled = false;
                 return;
             }
@@ -261,37 +265,26 @@
                 const items = data.response.items;
                 let reachedLimit = false;
 
-                // Читаем сообщения
                 for (let msg of items) {
-                    // Если сообщение старше выбранного нами времени - СТОП
                     if (msg.date < limitTimestamp) {
                         reachedLimit = true;
                         break; 
                     }
-                    
-                    // Если сообщение от бота (или вы тоже хотите считать свои?)
-                    // msg.out === 0 означает, что сообщение входящее (от бота)
+                    // Собираем в буфер только сообщения от бота
                     if (msg.out === 0 && msg.text) {
-                        parseMessage(msg.text);
+                        messagesBuffer.push(msg.text);
                     }
                 }
 
-                // Обновляем циферки на экране в реальном времени
-                updateUI();
-
                 if (reachedLimit || items.length === 0) {
-                    // Мы дошли до конца (или сообщения кончились)
                     isParsing = false;
-                    document.getElementById('progressInfo').innerText = `Готово! Проанализировано до заданного времени.`;
-                    document.getElementById('progressInfo').style.color = "#ffd700";
-                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('progressInfo').innerText = "Анализ данных...";
+                    // Запускаем хронологический анализ
+                    setTimeout(processChronologically, 100);
                 } else {
-                    // Лимит еще не достигнут. Сдвигаем offset и берем следующую пачку
                     currentOffset += 200;
-                    document.getElementById('progressInfo').innerText = `Проанализировано ${currentOffset} сообщений... Идем дальше!`;
-                    
-                    // Делаем паузу 400мс, чтобы ВК не заблокировал за спам
-                    setTimeout(fetchBatch, 400);
+                    document.getElementById('progressInfo').innerText = `Скачано ${currentOffset} сообщений...`;
+                    setTimeout(fetchBatch, 350); // Микро-пауза для ВК
                 }
             }
         };
@@ -300,47 +293,72 @@
             delete window[callbackName];
             document.head.removeChild(script);
             document.getElementById('progressInfo').innerText = "Ошибка сети! Пробую снова...";
-            setTimeout(fetchBatch, 1000); // При сбое пробуем через секунду
+            setTimeout(fetchBatch, 1000);
         };
 
-        // Запрашиваем 200 сообщений с нужным смещением
         script.src = `https://api.vk.com/method/messages.getHistory?peer_id=${dialogId}&count=200&offset=${currentOffset}&v=5.131&access_token=${token}&callback=${callbackName}`;
         document.head.appendChild(script);
     }
 
-    // === ПАРСЕР (ВЫТЯГИВАНИЕ ЦИФР ИЗ ТЕКСТА) ===
-    function parseMessage(text) {
-        // 1. Поиск золота (заработали, продали на, продали за)
-        // RegEx ищет слова (за|на|заработали), пробелы, ЧИСЛО, пробелы, слова (золота)
-        const goldMatch1 = text.match(/(?:за|на|заработали)\s+(\d+)\s+золота/i);
-        if (goldMatch1) {
-            stats.gold += parseInt(goldMatch1[1]);
+    // === НОВЫЙ ХРОНОЛОГИЧЕСКИЙ ПАРСЕР СО СТАТУСАМИ ===
+    function processChronologically() {
+        // Переворачиваем массив, чтобы читать от старых сообщений к новым
+        messagesBuffer.reverse();
+        
+        let inArena = false;
+
+        for (let text of messagesBuffer) {
+            
+            // 1. Проверяем смену состояний (Арена)
+            if (/Элитная арена/i.test(text) && /развлечений/i.test(text)) {
+                inArena = true;
+            }
+            if (/не смогли одолеть очередного противника/i.test(text) || /прогоняет Вас с арены/i.test(text)) {
+                inArena = false;
+            }
+
+            // 2. Поиск Золота
+            const goldMatch = text.match(/(?:за|на|заработали)\s+(\d+)\s+золота/i);
+            if (goldMatch) stats.gold += parseInt(goldMatch[1]);
+
+            // 3. Горшочки
+            const potMatch = text.match(/горшок с золотом\s*\((\d+)\)/i);
+            if (potMatch) {
+                stats.pots += 1;
+                stats.gold += parseInt(potMatch[1]);
+            }
+
+            // 4. Обычные трофеи
+            const trophyMatch1 = text.match(/Вы получили\s+(\d+)\s+трофеев/i);
+            const trophyMatch2 = text.match(/Трофеи\s*\+\s*(\d+)/i);
+            if (trophyMatch1) stats.trophies += parseInt(trophyMatch1[1]);
+            if (trophyMatch2) stats.trophies += parseInt(trophyMatch2[1]);
+
+            // 5. Элитные трофеи (С учетом текущего состояния!)
+            if (/Элитный трофей/i.test(text)) {
+                if (inArena) {
+                    stats.arenaElites += 1;
+                } else {
+                    stats.eliteTrophies += 1;
+                }
+            }
+
+            // 6. Репутация и бои
+            const repMatch = text.match(/Заработано репутации Ордена:\s*(\d+)/i);
+            if (repMatch) {
+                stats.battles += 1;
+                stats.reputation += parseInt(repMatch[1]);
+            }
         }
 
-        // 2. Горшочек с золотом
-        const potMatch = text.match(/горшок с золотом\s*\((\d+)\)/i);
-        if (potMatch) {
-            stats.pots += 1;
-            stats.gold += parseInt(potMatch[1]); // Добавляем золото из горшка в общую копилку
-        }
-
-        // 3. Трофеи (Вы получили Х трофеев ИЛИ Трофеи +Х)
-        const trophyMatch1 = text.match(/Вы получили\s+(\d+)\s+трофеев/i);
-        const trophyMatch2 = text.match(/Трофеи\s*\+\s*(\d+)/i);
-        if (trophyMatch1) stats.trophies += parseInt(trophyMatch1[1]);
-        if (trophyMatch2) stats.trophies += parseInt(trophyMatch2[1]);
-
-        // 4. Элитные трофеи (Просто ищем фразу в тексте)
-        if (/Элитный трофей/i.test(text)) {
-            stats.eliteTrophies += 1;
-        }
-
-        // 5. Репутация и Бои
-        const repMatch = text.match(/Заработано репутации Ордена:\s*(\d+)/i);
-        if (repMatch) {
-            stats.battles += 1; // Если дали репутацию, значит мы выиграли бой
-            stats.reputation += parseInt(repMatch[1]);
-        }
+        // Выводим результаты
+        updateUI();
+        document.getElementById('progressInfo').innerText = `Готово! Проанализировано ${messagesBuffer.length} сообщений.`;
+        document.getElementById('progressInfo').style.color = "#ffd700";
+        document.getElementById('startBtn').disabled = false;
+        
+        // Очищаем буфер
+        messagesBuffer = [];
     }
 </script>
 
