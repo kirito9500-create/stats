@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Дашборд Подземелья</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            background: #16213e;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 100%;
+            max-width: 800px;
+            box-sizing: border-box;
+        }
+        h2 { margin-top: 0; color: #e94560; text-align: center; font-size: 24px; }
+        
+        .setup-panel {
+            background: #0f3460;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            background: #1a1a2e;
+            color: #fff;
+            border: 1px solid #435585;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        label { font-size: 12px; color: #a0aab2; text-transform: uppercase; font-weight: bold; }
+        
+        button {
+            width: 100%;
+            background-color: #e94560;
+            color: white;
+            border: none;
+            padding: 14px;
+            margin-top: 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #d83a56; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        
+        #progressInfo {
+            text-align: center;
+            color: #4CAF50;
+            font-weight: bold;
+            margin: 15px 0;
+            font-size: 14px;
+            min-height: 20px;
+        }
+
+        /* Сетка виджетов статистики */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: #1a1a2e;
+            border: 1px solid #e94560;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+        }
+        
+        .stat-icon { font-size: 30px; margin-bottom: 5px; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #fff; margin: 5px 0; }
+        .stat-title { font-size: 12px; color: #a0aab2; text-transform: uppercase; }
+        
+        /* Особое выделение для золота */
+        .card-gold { border-color: #ffd700; }
+        .card-gold .stat-value { color: #ffd700; }
+        
+        .card-elite { border-color: #9c27b0; }
+        .card-elite .stat-value { color: #e1bee7; }
+        
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Трекер Подземелья</h2>
+    
+    <div class="setup-panel">
+        <label>Токен ВК</label>
+        <input type="text" id="tokenInput" placeholder="Токен ВКонтакте">
+        
+        <label>ID диалога с ботом</label>
+        <input type="text" id="dialogIdInput" placeholder="-208825850">
+        
+        <label style="margin-top: 10px; display: block;">Собирать статистику начиная с:</label>
+        <input type="datetime-local" id="timeLimitInput">
+        
+        <button id="startBtn" onclick="startParsing()">Собрать статистику</button>
+    </div>
+
+    <div id="progressInfo">Ожидание запуска...</div>
+
+    <div class="stats-grid">
+        <div class="stat-card card-gold">
+            <div class="stat-icon">💰</div>
+            <div class="stat-value" id="valGold">0</div>
+            <div class="stat-title">Всего золота</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">💀</div>
+            <div class="stat-value" id="valTrophies">0</div>
+            <div class="stat-title">Трофеев</div>
+        </div>
+        
+        <div class="stat-card card-elite">
+            <div class="stat-icon">☠️</div>
+            <div class="stat-value" id="valElite">0</div>
+            <div class="stat-title">Элитных трофеев</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">⚔️</div>
+            <div class="stat-value" id="valRep">0</div>
+            <div class="stat-title">Репутация Ордена</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">🏺</div>
+            <div class="stat-value" id="valPots">0</div>
+            <div class="stat-title">Горшочков найдено</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">🛡️</div>
+            <div class="stat-value" id="valBattles">0</div>
+            <div class="stat-title">Побед (Боев)</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И СТАТИСТИКА ===
+    let stats = {
+        gold: 0,
+        trophies: 0,
+        eliteTrophies: 0,
+        reputation: 0,
+        pots: 0,
+        battles: 0
+    };
+
+    let token = '';
+    let dialogId = '';
+    let limitTimestamp = 0; 
+    let currentOffset = 0;
+    let isParsing = false;
+
+    window.onload = () => {
+        // Подтягиваем сохраненные данные
+        const savedToken = localStorage.getItem('vk_token');
+        const savedDialog = localStorage.getItem('vk_dialog_id');
+        if (savedToken && savedDialog) {
+            document.getElementById('tokenInput').value = savedToken;
+            document.getElementById('dialogIdInput').value = savedDialog;
+        }
+
+        // По умолчанию ставим время на начало сегодняшнего дня (00:00)
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        // Форматируем для поля datetime-local (YYYY-MM-DDThh:mm)
+        const tzOffset = now.getTimezoneOffset() * 60000;
+        const localISOTime = (new Date(now - tzOffset)).toISOString().slice(0,16);
+        document.getElementById('timeLimitInput').value = localISOTime;
+    };
+
+    function resetStats() {
+        stats = { gold: 0, trophies: 0, eliteTrophies: 0, reputation: 0, pots: 0, battles: 0 };
+        updateUI();
+    }
+
+    function updateUI() {
+        document.getElementById('valGold').innerText = stats.gold;
+        document.getElementById('valTrophies').innerText = stats.trophies;
+        document.getElementById('valElite').innerText = stats.eliteTrophies;
+        document.getElementById('valRep').innerText = stats.reputation;
+        document.getElementById('valPots').innerText = stats.pots;
+        document.getElementById('valBattles').innerText = stats.battles;
+    }
+
+    function startParsing() {
+        token = document.getElementById('tokenInput').value.trim();
+        dialogId = document.getElementById('dialogIdInput').value.trim();
+        const timeInput = document.getElementById('timeLimitInput').value;
+
+        if (!token || !dialogId || !timeInput) {
+            alert('Заполните все поля, включая время!');
+            return;
+        }
+
+        // Сохраняем токены
+        localStorage.setItem('vk_token', token);
+        localStorage.setItem('vk_dialog_id', dialogId);
+
+        // Переводим выбранное время в Unix Timestamp (в секундах)
+        limitTimestamp = Math.floor(new Date(timeInput).getTime() / 1000);
+        
+        // Сброс перед началом
+        resetStats();
+        currentOffset = 0;
+        isParsing = true;
+        
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('progressInfo').innerText = "Подключение и сбор данных...";
+
+        fetchBatch();
+    }
+
+    // === ФУНКЦИЯ ЗАГРУЗКИ ПАЧКИ (200 сообщений) ===
+    function fetchBatch() {
+        if (!isParsing) return;
+
+        const script = document.createElement('script');
+        // Уникальное имя коллбека для каждого запроса
+        const callbackName = 'vkParse_' + Math.round(Math.random() * 1000000);
+        
+        window[callbackName] = function(data) {
+            delete window[callbackName];
+            document.head.removeChild(script);
+
+            if (data.error) {
+                document.getElementById('progressInfo').innerText = "Ошибка ВК: " + data.error.error_msg;
+                document.getElementById('startBtn').disabled = false;
+                return;
+            }
+
+            if (data.response && data.response.items) {
+                const items = data.response.items;
+                let reachedLimit = false;
+
+                // Читаем сообщения
+                for (let msg of items) {
+                    // Если сообщение старше выбранного нами времени - СТОП
+                    if (msg.date < limitTimestamp) {
+                        reachedLimit = true;
+                        break; 
+                    }
+                    
+                    // Если сообщение от бота (или вы тоже хотите считать свои?)
+                    // msg.out === 0 означает, что сообщение входящее (от бота)
+                    if (msg.out === 0 && msg.text) {
+                        parseMessage(msg.text);
+                    }
+                }
+
+                // Обновляем циферки на экране в реальном времени
+                updateUI();
+
+                if (reachedLimit || items.length === 0) {
+                    // Мы дошли до конца (или сообщения кончились)
+                    isParsing = false;
+                    document.getElementById('progressInfo').innerText = `Готово! Проанализировано до заданного времени.`;
+                    document.getElementById('progressInfo').style.color = "#ffd700";
+                    document.getElementById('startBtn').disabled = false;
+                } else {
+                    // Лимит еще не достигнут. Сдвигаем offset и берем следующую пачку
+                    currentOffset += 200;
+                    document.getElementById('progressInfo').innerText = `Проанализировано ${currentOffset} сообщений... Идем дальше!`;
+                    
+                    // Делаем паузу 400мс, чтобы ВК не заблокировал за спам
+                    setTimeout(fetchBatch, 400);
+                }
+            }
+        };
+
+        script.onerror = function() {
+            delete window[callbackName];
+            document.head.removeChild(script);
+            document.getElementById('progressInfo').innerText = "Ошибка сети! Пробую снова...";
+            setTimeout(fetchBatch, 1000); // При сбое пробуем через секунду
+        };
+
+        // Запрашиваем 200 сообщений с нужным смещением
+        script.src = `https://api.vk.com/method/messages.getHistory?peer_id=${dialogId}&count=200&offset=${currentOffset}&v=5.131&access_token=${token}&callback=${callbackName}`;
+        document.head.appendChild(script);
+    }
+
+    // === ПАРСЕР (ВЫТЯГИВАНИЕ ЦИФР ИЗ ТЕКСТА) ===
+    function parseMessage(text) {
+        // 1. Поиск золота (заработали, продали на, продали за)
+        // RegEx ищет слова (за|на|заработали), пробелы, ЧИСЛО, пробелы, слова (золота)
+        const goldMatch1 = text.match(/(?:за|на|заработали)\s+(\d+)\s+золота/i);
+        if (goldMatch1) {
+            stats.gold += parseInt(goldMatch1[1]);
+        }
+
+        // 2. Горшочек с золотом
+        const potMatch = text.match(/горшок с золотом\s*\((\d+)\)/i);
+        if (potMatch) {
+            stats.pots += 1;
+            stats.gold += parseInt(potMatch[1]); // Добавляем золото из горшка в общую копилку
+        }
+
+        // 3. Трофеи (Вы получили Х трофеев ИЛИ Трофеи +Х)
+        const trophyMatch1 = text.match(/Вы получили\s+(\d+)\s+трофеев/i);
+        const trophyMatch2 = text.match(/Трофеи\s*\+\s*(\d+)/i);
+        if (trophyMatch1) stats.trophies += parseInt(trophyMatch1[1]);
+        if (trophyMatch2) stats.trophies += parseInt(trophyMatch2[1]);
+
+        // 4. Элитные трофеи (Просто ищем фразу в тексте)
+        if (/Элитный трофей/i.test(text)) {
+            stats.eliteTrophies += 1;
+        }
+
+        // 5. Репутация и Бои
+        const repMatch = text.match(/Заработано репутации Ордена:\s*(\d+)/i);
+        if (repMatch) {
+            stats.battles += 1; // Если дали репутацию, значит мы выиграли бой
+            stats.reputation += parseInt(repMatch[1]);
+        }
+    }
+</script>
+
+</body>
+</html>
